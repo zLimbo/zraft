@@ -1,10 +1,10 @@
 message("\n==== zraft ====")
 cmake_minimum_required(VERSION 3.5)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 project(zraft)
 
-add_executable(server simple_raft/server.cpp)
-target_include_directories(server PRIVATE .)
-target_link_libraries(server pthread)
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+
+add_subdirectory(simple_raft)
