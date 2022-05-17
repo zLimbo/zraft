@@ -296,7 +296,7 @@ func (rf *Raft) ballotCount(server int, ballot *int, args *RequestVoteArgs, repl
 	if !reply.VoteGranted {
 		// 如果竞选的任期落后，则更新本节点的term，终止竞选
 		if rf.currentTerm < reply.Term {
-			zlog.Debug("%d|%2d|%d|%d|<%d,%d>| state:%s=>follower, higher term from %d",
+			zlog.Info("%d|%2d|%d|%d|<%d,%d>| state:%s=>follower, higher term from %d",
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				state2str[atomic.LoadInt32(&rf.state)], server)
 			atomic.StoreInt32(&rf.state, Follower)
@@ -430,7 +430,7 @@ func (rf *Raft) timingHeartbeatForAll() {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
 		// 如果连接数少于半数，则退化为 follower
-		zlog.Debug("%d|%2d|%d|%d|<%d,%d>| leader timeout, connect count=%d(<%d), state:%s=>follower",
+		zlog.Info("%d|%2d|%d|%d|<%d,%d>| leader timeout, connect count=%d(<%d), state:%s=>follower",
 			rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 			connectCount, half, state2str[atomic.LoadInt32(&rf.state)])
 		atomic.StoreInt32(&rf.state, Follower)
@@ -495,7 +495,7 @@ func (rf *Raft) heartbeatForOne(server int) {
 	atomic.StoreInt32(&rf.peerConnBmap, atomic.LoadInt32(&rf.peerConnBmap)|(1<<server))
 
 	if rf.currentTerm < reply.Term {
-		zlog.Debug("%d|%2d|%d|%d|<%d,%d>| heartbeat to %d, higher term, state:%s=>follower",
+		zlog.Info("%d|%2d|%d|%d|<%d,%d>| heartbeat to %d, higher term, state:%s=>follower",
 			rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 			server, state2str[atomic.LoadInt32(&rf.state)])
 		rf.currentTerm = reply.Term
@@ -617,7 +617,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 
 			// 遇到更高任期，成为follower
 			if rf.currentTerm < reply.Term {
-				zlog.Debug("%d|%2d|%d|%d|<%d,%d>| append entries to %d, higher term, state:%s=>follower",
+				zlog.Info("%d|%2d|%d|%d|<%d,%d>| append entries to %d, higher term, state:%s=>follower",
 					rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 					server, state2str[atomic.LoadInt32(&rf.state)])
 				rf.currentTerm = reply.Term
@@ -753,7 +753,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// 新的leader产生
 	if args.LeaderId != rf.leaderId {
-		zlog.Debug("%d|%2d|%d|%d|<%d,%d>| state:%s=>follower, new leader %d",
+		zlog.Info("%d|%2d|%d|%d|<%d,%d>| state:%s=>follower, new leader %d",
 			rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 			state2str[atomic.LoadInt32(&rf.state)], args.LeaderId)
 		rf.leaderId = args.LeaderId
