@@ -16,7 +16,13 @@ func main() {
 	flag.StringVar(&saddr, "saddr", "", "address of server")
 	flag.StringVar(&caddr, "caddr", "", "address of client")
 	flag.IntVar(&n, "n", 3, "peer num")
-	flag.IntVar(&logLevel, "log", 2, "log level(0:Debug,1:Info,2:Warn,3:Error)")
+	flag.IntVar(&logLevel, "log", 2, "log level")
+
+	flag.IntVar(&zraft.KConf.EpochSize, "epochSize", 10000, "epoch size")
+	flag.IntVar(&zraft.KConf.ReqSize, "reqSize", 128, "req size")
+	flag.IntVar(&zraft.KConf.BatchSize, "batchSize", 1000, "batch size")
+	flag.BoolVar(&zraft.KConf.Persisted, "persisted", false, "log out directory")
+	flag.StringVar(&zraft.KConf.LogDir, "logDir", "./", "log out directory")
 
 	flag.Parse()
 
@@ -30,6 +36,7 @@ func main() {
 		zraft.RunMaster(maddr, n)
 	case "raft":
 		// 执行命令: ./naive -role server -maddr localhost:8000 -saddr localhost:800x
+		zraft.KConf.Show()
 		zraft.RunRaft(maddr, saddr)
 	case "client":
 		// 执行命令: ./naive -role client -maddr localhost:8000 -caddr localhost:9000

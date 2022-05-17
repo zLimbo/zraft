@@ -110,6 +110,8 @@ func RunRaft(maddr, saddr string) {
 	// 并行建立连接
 	rf.connectPeers()
 
+	time.Sleep(time.Second)
+
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
@@ -556,7 +558,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 				// 指数递增拷贝
 				// nEntriesCopy = MinInt(nEntriesCopy*nEntriesCopy+1, len(rf.log)-startIndex)
 				// 全部取出拷贝
-				nEntriesCopy = MinInt(len(rf.log)-startIndex, maxEntriesCopy)
+				nEntriesCopy = MinInt(len(rf.log)-startIndex, KConf.BatchSize)
 			} else {
 				nEntriesCopy = MinInt(1, len(rf.log)-startIndex)
 			}
@@ -938,30 +940,38 @@ func (rf *Raft) getState() (int, bool) {
 
 func (rf *Raft) applyLog() {
 
-	outCh := make(chan []string, 1000)
+	outCh := make(chan []interface{}, 1000)
 	go rf.persist(outCh)
+	// statCh := make(chan interface{}, 1000)
+	// go rf.stat(statCh)
 
-	cmds := make([]string, 0, epochSize)
+	cmds := make([]interface{}, 0, KConf.EpochSize)
 	t0 := time.Now()
 	nApply := 0
 	for msg := range rf.applyCh {
 		nApply++
-		cmds = append(cmds, msg.Command.(string))
+		cmds = append(cmds, msg.Command)
 		if len(cmds) == cap(cmds) {
-			tps := float64(epochSize) / ToSecond(time.Since(t0))
+			tps := float64(KConf.EpochSize) / ToSecond(time.Since(t0))
 			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, tps=%.2f",
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				nApply, tps)
 			outCh <- cmds
-			cmds = make([]string, 0, epochSize)
+			// statCh <- strconv.Itoa(int(tps)) + " "
+			cmds = make([]interface{}, 0, KConf.EpochSize)
 			t0 = time.Now()
 		}
 	}
 }
 
-func (rf *Raft) persist(outCh chan []string) {
+func (rf *Raft) persist(outCh chan []interface{}) {
+	if !KConf.Persisted {
+		for {
+			<-outCh
+		}
+	}
 	t0 := time.Now()
-	path := fmt.Sprintf("%s/%02d_%s.log", logDir, rf.me, t0.Format("2006-01-02_15:04:05"))
+	path := fmt.Sprintf("%s/%02d_%s.log", KConf.LogDir, rf.me, t0.Format("2006-01-02_15:04:05"))
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		zlog.Error("open log file fail, %v", err)
@@ -970,8 +980,22 @@ func (rf *Raft) persist(outCh chan []string) {
 	write := bufio.NewWriter(file)
 	for cmds := range outCh {
 		for _, cmd := range cmds {
-			write.WriteString(cmd)
+			write.WriteString(cmd.(string))
 		}
+	}
+}
+
+func (rf *Raft) stat(statCh chan interface{}) {
+	t0 := time.Now()
+	path := fmt.Sprintf("tps_%s.log", t0.Format("2006-01-02_15:04:05"))
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		zlog.Error("open log file fail, %v", err)
+	}
+	defer file.Close()
+	write := bufio.NewWriter(file)
+	for st := range statCh {
+		write.WriteString(st.(string))
 	}
 }
 
@@ -979,7 +1003,7 @@ func (rf *Raft) test() {
 	// reqTime := 5.0 // 请求时间
 
 	reqCount := 0
-	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, reqSize*batchSize-4)
+	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, KConf.ReqSize-4)
 	for {
 		time.Sleep(intervalTime * time.Millisecond)
 		if atomic.LoadInt32(&rf.state) == Leader {
@@ -991,17 +1015,9 @@ func (rf *Raft) test() {
 		for atomic.LoadInt32(&rf.state) == Leader {
 			reqCount++
 			rf.start(fmt.Sprintf(format, reqCount))
-			for reqCount > (2*epochSize)+rf.commitIndex {
+			for reqCount > (2*KConf.EpochSize)+rf.commitIndex {
 				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}
 }
-
-const (
-	epochSize      = 10000
-	reqSize        = 128
-	batchSize      = 1
-	maxEntriesCopy = 100
-	logDir = "../log"
-)
