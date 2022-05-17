@@ -1004,6 +1004,8 @@ func (rf *Raft) test() {
 
 	reqCount := 0
 	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, KConf.ReqSize-4)
+
+	k := MaxInt(10, 10*KConf.BatchSize/KConf.EpochSize)
 	for {
 		time.Sleep(intervalTime * time.Millisecond)
 		if atomic.LoadInt32(&rf.state) == Leader {
@@ -1015,7 +1017,7 @@ func (rf *Raft) test() {
 		for atomic.LoadInt32(&rf.state) == Leader {
 			reqCount++
 			rf.start(fmt.Sprintf(format, reqCount))
-			for reqCount > (2*KConf.EpochSize)+rf.commitIndex {
+			for reqCount > (k*KConf.EpochSize)+rf.commitIndex {
 				time.Sleep(100 * time.Millisecond)
 			}
 		}
