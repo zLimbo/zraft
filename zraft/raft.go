@@ -949,7 +949,7 @@ func (rf *Raft) applyLog() {
 		cmds = append(cmds, msg.Command.(string))
 		if len(cmds) == cap(cmds) {
 			tps := float64(epochSize) / ToSecond(time.Since(t0))
-			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, recently tps=%.2f",
+			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, tps=%.2f",
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				nApply, tps)
 			outCh <- cmds
@@ -961,7 +961,7 @@ func (rf *Raft) applyLog() {
 
 func (rf *Raft) persist(outCh chan []string) {
 	t0 := time.Now()
-	path := fmt.Sprintf("./log/%2d_%s.log", rf.me, t0.Format("2006-01-02_15:04:05"))
+	path := fmt.Sprintf("%s/%02d_%s.log", logDir, rf.me, t0.Format("2006-01-02_15:04:05"))
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		zlog.Error("open log file fail, %v", err)
@@ -978,8 +978,8 @@ func (rf *Raft) persist(outCh chan []string) {
 func (rf *Raft) test() {
 	// reqTime := 5.0 // 请求时间
 
-	reqCount := int64(0)
-	format := fmt.Sprintf("%2d-%%0%dd\n", rf.me, reqSize*batchSize-4)
+	reqCount := 0
+	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, reqSize*batchSize-4)
 	for {
 		time.Sleep(intervalTime * time.Millisecond)
 		if atomic.LoadInt32(&rf.state) == Leader {
@@ -987,11 +987,12 @@ func (rf *Raft) test() {
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				reqCount)
 		}
+
 		for atomic.LoadInt32(&rf.state) == Leader {
 			reqCount++
 			rf.start(fmt.Sprintf(format, reqCount))
-			if reqCount == epochSize {
-				time.Sleep(time.Second)
+			for reqCount > (2*epochSize)+rf.commitIndex {
+				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}
@@ -1001,5 +1002,6 @@ const (
 	epochSize      = 10000
 	reqSize        = 128
 	batchSize      = 1
-	maxEntriesCopy = 10
+	maxEntriesCopy = 100
+	logDir = "../log"
 )
