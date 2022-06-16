@@ -23,6 +23,8 @@ func main() {
 	flag.IntVar(&zraft.KConf.BatchSize, "batchSize", 1000, "batch size")
 	flag.BoolVar(&zraft.KConf.Persisted, "persisted", false, "log out directory")
 	flag.StringVar(&zraft.KConf.LogDir, "logDir", "./", "log out directory")
+	flag.IntVar(&zraft.KConf.DelayFrom, "delayFrom", 0, "net delay from")
+	flag.IntVar(&zraft.KConf.DelaRange, "delayRange", 0, "net delay range")
 
 	flag.Parse()
 

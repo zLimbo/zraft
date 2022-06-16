@@ -2,6 +2,7 @@
 
 import sys
 import os
+import random
 
 hosts = [
     "127.0.0.1"
@@ -22,12 +23,15 @@ def getPort():
 argv = sys.argv
 if len(argv) < 2:
     raise Exception("argv.len < 2")
-peerNum = argv[1]
-print("peerNum={}".format(peerNum))
-path = '.'
-if len(argv) < 3:
-    path = argv[2]
-print("path={}".format(path))
+peerNum = int(argv[1])
 
 
-# for i in range(peerNum):
+port = 28000
+ports = []
+for i in range(0, peerNum):
+    # port = getPort()
+    port += 1
+    ports.append(port)
+
+with open("ports.txt", "w") as f:
+    f.write('\n'.join(map(str, ports)))

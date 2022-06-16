@@ -8,6 +8,8 @@ type Config struct {
 	BatchSize int
 	Persisted bool
 	LogDir    string
+	DelayFrom int
+	DelaRange int
 }
 
 var KConf Config
@@ -18,4 +20,6 @@ func (c *Config) Show() {
 	zlog.Info("> BatchSize=%d", c.BatchSize)
 	zlog.Info("> Persisted=%v", c.Persisted)
 	zlog.Info("> LogDir=%s", c.LogDir)
+	zlog.Info("> DelayFrom=%d", c.DelayFrom)
+	zlog.Info("> DelaRange=%d", c.DelaRange)
 }

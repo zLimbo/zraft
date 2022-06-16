@@ -46,7 +46,7 @@ var state2str = map[State]string{
 
 const (
 	intervalTime         = 20
-	heartbeatTime        = 120
+	heartbeatTime        = 200
 	electionTimeoutFrom  = 600
 	electionTimeoutRange = 200
 	leaderTimeout        = 2000
@@ -60,6 +60,7 @@ type Peer struct {
 	id     int
 	addr   string
 	rpcCli *rpc.Client // rpc服务端的客户端
+	connStatus int32
 }
 
 type Raft struct {
@@ -68,7 +69,6 @@ type Raft struct {
 	me           int        // this peer's index into peers[]
 	addr         string     // rpc监听地址
 	state        State
-	peerConnBmap int32
 	applyCh      chan ApplyMsg
 	leaderLost   int32 // leader 是否超时
 
@@ -333,10 +333,14 @@ func (rf *Raft) ballotCount(server int, ballot *int, args *RequestVoteArgs, repl
 }
 
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+	ms := KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
 	if err := rf.peers[server].rpcCli.Call("Raft.RequestVote", args, reply); err != nil {
 		zlog.Warn("%v", err)
 		return false
 	}
+	ms = KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
 	return true
 }
 
@@ -397,32 +401,34 @@ func (rf *Raft) timingHeartbeatForAll() {
 		rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term)
 
 	half := len(rf.peers) / 2
-	atomic.StoreInt32(&rf.peerConnBmap, 0)
+	for server := range rf.peers {
+		if server == rf.me {
+			continue
+		}
+		atomic.StoreInt32(&rf.peers[server].connStatus, 0)
+	}
 
 	for atomic.LoadInt32(&rf.state) == Leader {
-		peerConnBmap1 := int32(0)
+		peerConnBmap := make(map[int]struct{})
 		for t := 0; t < leaderTimeout; t += heartbeatTime {
-			peerConnBmap1 |= atomic.LoadInt32(&rf.peerConnBmap)
 			for server := range rf.peers {
 				if server == rf.me {
 					continue
 				}
 				// 如果heartbeatTime时间内未发送rpc，则发送心跳
-				if ((atomic.LoadInt32(&rf.peerConnBmap) >> server) & 1) == 0 {
+				if atomic.LoadInt32(&rf.peers[server].connStatus) == 0 {
 					go rf.heartbeatForOne(server)
+				} else {
+					atomic.StoreInt32(&rf.peers[server].connStatus, 0)
+					peerConnBmap[server] = struct{}{}
 				}
 			}
 			// 定时发送心跳
-			atomic.StoreInt32(&rf.peerConnBmap, 0)
 			time.Sleep(heartbeatTime * time.Millisecond)
 		}
 
 		// 每 leaderTimeout 时间统计连接状态，如果半数未连接则退出leader状态
-		connectCount := 0
-		for peerConnBmap1 != 0 {
-			peerConnBmap1 &= (peerConnBmap1 - 1)
-			connectCount++
-		}
+		connectCount := len(peerConnBmap)
 		if connectCount >= half {
 			continue
 		}
@@ -492,7 +498,7 @@ func (rf *Raft) heartbeatForOne(server int) {
 	}
 
 	// 保持连接置位
-	atomic.StoreInt32(&rf.peerConnBmap, atomic.LoadInt32(&rf.peerConnBmap)|(1<<server))
+	atomic.StoreInt32(&rf.peers[server].connStatus, 1)
 
 	if rf.currentTerm < reply.Term {
 		zlog.Info("%d|%2d|%d|%d|<%d,%d>| heartbeat to %d, higher term, state:%s=>follower",
@@ -527,9 +533,8 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 	// TODO: 串行发送rpc，并行会遇到state不是leader却依然发送和处理信息的情况, 也存在rpc幂等性问题
 	for atomic.LoadInt32(&rf.state) == Leader {
 
-		// 前一个rpc发送成功，立即判断是否要发下一个，同时达到心跳时间发送一个必要rpc
+		// 前一个rpc发送成功，立即判断是否要发下一个
 		for atomic.LoadInt32(&rf.state) == Leader {
-			// for sumTime := 0; sumTime < heartbeatTime; sumTime += intervalTime {
 			// 检查是否已不是leader或被kill
 			needSend := func() bool {
 				rf.mu.Lock()
@@ -613,7 +618,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 			}
 
 			// 保持连接置位
-			atomic.StoreInt32(&rf.peerConnBmap, atomic.LoadInt32(&rf.peerConnBmap)|(1<<server))
+			atomic.StoreInt32(&rf.peers[server].connStatus, 1)
 
 			// 遇到更高任期，成为follower
 			if rf.currentTerm < reply.Term {
@@ -714,10 +719,14 @@ func (rf *Raft) advanceLeaderCommit() {
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ms := KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
 	if err := rf.peers[server].rpcCli.Call("Raft.AppendEntries", args, reply); err != nil {
 		zlog.Error("%v", err)
 		return false
 	}
+	ms = KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
 	return true
 }
 
@@ -1002,6 +1011,7 @@ func (rf *Raft) stat(statCh chan interface{}) {
 func (rf *Raft) test() {
 	// reqTime := 5.0 // 请求时间
 
+	return
 	reqCount := 0
 	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, KConf.ReqSize-4)
 
