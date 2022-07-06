@@ -51,7 +51,6 @@ log/
 *.log
 
 !.gitignore
-
+!makefile
 zrf/
-
 port.txt

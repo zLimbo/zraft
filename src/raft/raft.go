@@ -11,10 +11,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"zraft/src/config"
-	"zraft/src/master"
-	"zraft/src/util"
-	"zraft/src/zlog"
+	"zraft/config"
+	"zraft/master"
+	"zraft/util"
+	"zraft/zlog"
 )
 
 type ApplyMsg struct {
@@ -57,6 +57,13 @@ const (
 
 func GetRandomElapsedTime() int {
 	return electionTimeoutFrom + rand.Intn(electionTimeoutRange)
+}
+
+func rpcDelay() {
+	if config.KConf.DelayRange > 0 {
+		ms := config.KConf.DelayFrom + rand.Intn(config.KConf.DelayRange)
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
 }
 
 type Peer struct {
@@ -336,14 +343,12 @@ func (rf *Raft) ballotCount(server int, ballot *int, args *RequestVoteArgs, repl
 }
 
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	ms := config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
-	time.Sleep(time.Duration(ms) * time.Millisecond)
+	rpcDelay()
 	if err := rf.peers[server].rpcCli.Call("Raft.RequestVote", args, reply); err != nil {
 		zlog.Warn("%v", err)
 		return false
 	}
-	ms = config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
-	time.Sleep(time.Duration(ms) * time.Millisecond)
+	rpcDelay()
 	return true
 }
 
@@ -722,14 +727,12 @@ func (rf *Raft) advanceLeaderCommit() {
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	ms := config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
-	time.Sleep(time.Duration(ms) * time.Millisecond)
+	rpcDelay()
 	if err := rf.peers[server].rpcCli.Call("Raft.AppendEntries", args, reply); err != nil {
 		zlog.Error("%v", err)
 		return false
 	}
-	ms = config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
-	time.Sleep(time.Duration(ms) * time.Millisecond)
+	rpcDelay()
 	return true
 }
 
@@ -950,32 +953,6 @@ func (rf *Raft) getState() (int, bool) {
 	return term, isleader
 }
 
-func (rf *Raft) applyLog() {
-
-	outCh := make(chan []interface{}, 1000)
-	go rf.persist(outCh)
-	// statCh := make(chan interface{}, 1000)
-	// go rf.stat(statCh)
-
-	cmds := make([]interface{}, 0, config.KConf.EpochSize)
-	t0 := time.Now()
-	nApply := 0
-	for msg := range rf.applyCh {
-		nApply++
-		cmds = append(cmds, msg.Command)
-		if len(cmds) == cap(cmds) {
-			tps := float64(config.KConf.EpochSize) / util.ToSecond(time.Since(t0))
-			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, tps=%.2f",
-				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
-				nApply, tps)
-			outCh <- cmds
-			// statCh <- strconv.Itoa(int(tps)) + " "
-			cmds = make([]interface{}, 0, config.KConf.EpochSize)
-			t0 = time.Now()
-		}
-	}
-}
-
 func (rf *Raft) persist(outCh chan []interface{}) {
 	if !config.KConf.Persisted {
 		for {
@@ -1011,10 +988,35 @@ func (rf *Raft) stat(statCh chan interface{}) {
 	}
 }
 
+func (rf *Raft) applyLog() {
+
+	outCh := make(chan []interface{}, 1000)
+	go rf.persist(outCh)
+	// statCh := make(chan interface{}, 1000)
+	// go rf.stat(statCh)
+
+	cmds := make([]interface{}, 0, config.KConf.EpochSize)
+	t0 := time.Now()
+	nApply := 0
+	for msg := range rf.applyCh {
+		nApply++
+		cmds = append(cmds, msg.Command)
+		if len(cmds) == cap(cmds) {
+			tps := float64(config.KConf.EpochSize) / util.ToSecond(time.Since(t0))
+			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, tps=%.2f",
+				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
+				nApply, tps)
+			outCh <- cmds
+			// statCh <- strconv.Itoa(int(tps)) + " "
+			cmds = make([]interface{}, 0, config.KConf.EpochSize)
+			t0 = time.Now()
+		}
+	}
+}
 func (rf *Raft) test() {
 	// reqTime := 5.0 // 请求时间
 
-	return
+	// return
 	reqCount := 0
 	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, config.KConf.ReqSize-4)
 

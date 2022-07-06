@@ -2,11 +2,11 @@ package main
 
 import (
 	"flag"
-	"zraft/src/config"
-	"zraft/src/draft"
-	"zraft/src/master"
-	"zraft/src/raft"
-	"zraft/src/zlog"
+	"zraft/config"
+	"zraft/draft"
+	"zraft/master"
+	"zraft/raft"
+	"zraft/zlog"
 )
 
 func main() {
@@ -23,11 +23,12 @@ func main() {
 
 	flag.IntVar(&config.KConf.EpochSize, "epochSize", 10000, "epoch size")
 	flag.IntVar(&config.KConf.ReqSize, "reqSize", 128, "req size")
+	flag.IntVar(&config.KConf.EpochNum, "epochNum", 100, "epoch num")
 	flag.IntVar(&config.KConf.BatchSize, "batchSize", 1000, "batch size")
 	flag.BoolVar(&config.KConf.Persisted, "persisted", false, "log out directory")
 	flag.StringVar(&config.KConf.LogDir, "logDir", "./", "log out directory")
 	flag.IntVar(&config.KConf.DelayFrom, "delayFrom", 0, "net delay from")
-	flag.IntVar(&config.KConf.DelaRange, "delayRange", 0, "net delay range")
+	flag.IntVar(&config.KConf.DelayRange, "delayRange", 0, "net delay range")
 	flag.BoolVar(&config.KConf.Draft, "draft", false, "use draft")
 
 	flag.Parse()
