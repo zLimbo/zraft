@@ -42,7 +42,7 @@ type RegisterReply struct {
 }
 
 // server 注册到 master
-func (m *Master) Register(args *RegisterArgs, reply *RegisterReply) error {
+func (m *Master) RegisterRpc(args *RegisterArgs, reply *RegisterReply) error {
 
 	// 匿名函数：便于互斥器的加锁与释放
 	ok := func() bool {
