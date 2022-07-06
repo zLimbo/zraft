@@ -1,4 +1,4 @@
-package zraft
+package raft
 
 import (
 	"bufio"
@@ -11,7 +11,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"zraft/zlog"
+	"zpbft/zpbft/config"
+	"zpbft/zpbft/master"
+	"zpbft/zpbft/util"
+	"zpbft/zpbft/zlog"
 )
 
 type ApplyMsg struct {
@@ -57,20 +60,20 @@ func GetRandomElapsedTime() int {
 }
 
 type Peer struct {
-	id     int
-	addr   string
-	rpcCli *rpc.Client // rpc服务端的客户端
+	id         int
+	addr       string
+	rpcCli     *rpc.Client // rpc服务端的客户端
 	connStatus int32
 }
 
 type Raft struct {
-	mu           sync.Mutex // Lock to protect shared access to this peer's state
-	peers        []*Peer    // RPC end points of all peers
-	me           int        // this peer's index into peers[]
-	addr         string     // rpc监听地址
-	state        State
-	applyCh      chan ApplyMsg
-	leaderLost   int32 // leader 是否超时
+	mu         sync.Mutex // Lock to protect shared access to this peer's state
+	peers      []*Peer    // RPC end points of all peers
+	me         int        // this peer's index into peers[]
+	addr       string     // rpc监听地址
+	state      State
+	applyCh    chan ApplyMsg
+	leaderLost int32 // leader 是否超时
 
 	// raft参数
 	leaderId    int
@@ -144,8 +147,8 @@ func (rf *Raft) register(maddr string) {
 		zlog.Error("rpc.DialHTTP failed, err:%v", err)
 	}
 
-	args := &RegisterArgs{Addr: rf.addr}
-	reply := &RegisterReply{}
+	args := &master.RegisterArgs{Addr: rf.addr}
+	reply := &master.RegisterReply{}
 
 	zlog.Info("register peer info ...")
 	rpcCli.Call("Master.Register", args, reply)
@@ -333,13 +336,13 @@ func (rf *Raft) ballotCount(server int, ballot *int, args *RequestVoteArgs, repl
 }
 
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	ms := KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	ms := config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 	if err := rf.peers[server].rpcCli.Call("Raft.RequestVote", args, reply); err != nil {
 		zlog.Warn("%v", err)
 		return false
 	}
-	ms = KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	ms = config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 	return true
 }
@@ -561,11 +564,11 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 			startIndex := rf.nextIndex[server]
 			if logMatched {
 				// 指数递增拷贝
-				// nEntriesCopy = MinInt(nEntriesCopy*nEntriesCopy+1, len(rf.log)-startIndex)
+				// nEntriesCopy = util.MinInt(nEntriesCopy*nEntriesCopy+1, len(rf.log)-startIndex)
 				// 全部取出拷贝
-				nEntriesCopy = MinInt(len(rf.log)-startIndex, KConf.BatchSize)
+				nEntriesCopy = util.MinInt(len(rf.log)-startIndex, config.KConf.BatchSize)
 			} else {
-				nEntriesCopy = MinInt(1, len(rf.log)-startIndex)
+				nEntriesCopy = util.MinInt(1, len(rf.log)-startIndex)
 			}
 
 			return &AppendEntriesArgs{
@@ -644,7 +647,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 
 			if len(args.Entries) != 0 {
 				// 复制到副本成功
-				rf.matchIndex[server] = MaxInt(rf.matchIndex[server], args.PrevLogIndex+len(args.Entries))
+				rf.matchIndex[server] = util.MaxInt(rf.matchIndex[server], args.PrevLogIndex+len(args.Entries))
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
 			}
 
@@ -653,7 +656,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 				server, args.PrevLogIndex, args.PrevLogIndex+len(args.Entries), rf.matchIndex[server], rf.nextIndex[server])
 
 			// 本server commitIndex的值
-			commitIndex = MinInt(args.LeaderCommit, rf.matchIndex[server])
+			commitIndex = util.MinInt(args.LeaderCommit, rf.matchIndex[server])
 
 			// 推进leader的commit
 			rf.advanceLeaderCommit()
@@ -719,13 +722,13 @@ func (rf *Raft) advanceLeaderCommit() {
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	ms := KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	ms := config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 	if err := rf.peers[server].rpcCli.Call("Raft.AppendEntries", args, reply); err != nil {
 		zlog.Error("%v", err)
 		return false
 	}
-	ms = KConf.DelayFrom + rand.Intn(KConf.DelaRange)
+	ms = config.KConf.DelayFrom + rand.Intn(config.KConf.DelaRange)
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 	return true
 }
@@ -803,7 +806,7 @@ func (rf *Raft) foundSameLog(args *AppendEntriesArgs, reply *AppendEntriesReply)
 		return true
 	}
 
-	index := MinInt(args.PrevLogIndex, len(rf.log)-1)
+	index := util.MinInt(args.PrevLogIndex, len(rf.log)-1)
 	if rf.log[index].Term > args.PrevLogTerm {
 		// 如果term不等，则采用二分查找找到最近匹配的日志索引
 		left, right := rf.commitIndex, index
@@ -848,7 +851,7 @@ func (rf *Raft) updateEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// 推进commit和apply
 	oldCommitIndex := rf.commitIndex
-	rf.commitIndex = MinInt(args.LeaderCommit, len(rf.log)-1)
+	rf.commitIndex = util.MinInt(args.LeaderCommit, len(rf.log)-1)
 	rf.applyLogEntries(oldCommitIndex+1, rf.commitIndex)
 	rf.lastApplied = rf.commitIndex
 
@@ -954,33 +957,33 @@ func (rf *Raft) applyLog() {
 	// statCh := make(chan interface{}, 1000)
 	// go rf.stat(statCh)
 
-	cmds := make([]interface{}, 0, KConf.EpochSize)
+	cmds := make([]interface{}, 0, config.KConf.EpochSize)
 	t0 := time.Now()
 	nApply := 0
 	for msg := range rf.applyCh {
 		nApply++
 		cmds = append(cmds, msg.Command)
 		if len(cmds) == cap(cmds) {
-			tps := float64(KConf.EpochSize) / ToSecond(time.Since(t0))
+			tps := float64(config.KConf.EpochSize) / util.ToSecond(time.Since(t0))
 			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, tps=%.2f",
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				nApply, tps)
 			outCh <- cmds
 			// statCh <- strconv.Itoa(int(tps)) + " "
-			cmds = make([]interface{}, 0, KConf.EpochSize)
+			cmds = make([]interface{}, 0, config.KConf.EpochSize)
 			t0 = time.Now()
 		}
 	}
 }
 
 func (rf *Raft) persist(outCh chan []interface{}) {
-	if !KConf.Persisted {
+	if !config.KConf.Persisted {
 		for {
 			<-outCh
 		}
 	}
 	t0 := time.Now()
-	path := fmt.Sprintf("%s/%02d_%s.log", KConf.LogDir, rf.me, t0.Format("2006-01-02_15:04:05"))
+	path := fmt.Sprintf("%s/%02d_%s.log", config.KConf.LogDir, rf.me, t0.Format("2006-01-02_15:04:05"))
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		zlog.Error("open log file fail, %v", err)
@@ -1013,9 +1016,9 @@ func (rf *Raft) test() {
 
 	return
 	reqCount := 0
-	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, KConf.ReqSize-4)
+	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, config.KConf.ReqSize-4)
 
-	k := MaxInt(10, 10*KConf.BatchSize/KConf.EpochSize)
+	k := util.MaxInt(10, 10*config.KConf.BatchSize/config.KConf.EpochSize)
 	for {
 		time.Sleep(intervalTime * time.Millisecond)
 		if atomic.LoadInt32(&rf.state) == Leader {
@@ -1027,7 +1030,7 @@ func (rf *Raft) test() {
 		for atomic.LoadInt32(&rf.state) == Leader {
 			reqCount++
 			rf.start(fmt.Sprintf(format, reqCount))
-			for reqCount > (k*KConf.EpochSize)+rf.commitIndex {
+			for reqCount > (k*config.KConf.EpochSize)+rf.commitIndex {
 				time.Sleep(100 * time.Millisecond)
 			}
 		}

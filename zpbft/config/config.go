@@ -1,6 +1,6 @@
-package zraft
+package config
 
-import "zraft/zlog"
+import "zpbft/zpbft/zlog"
 
 type Config struct {
 	EpochSize int
@@ -10,6 +10,7 @@ type Config struct {
 	LogDir    string
 	DelayFrom int
 	DelaRange int
+	Draft     bool
 }
 
 var KConf Config
@@ -22,4 +23,5 @@ func (c *Config) Show() {
 	zlog.Info("> LogDir=%s", c.LogDir)
 	zlog.Info("> DelayFrom=%d", c.DelayFrom)
 	zlog.Info("> DelaRange=%d", c.DelaRange)
+	zlog.Info("> Draft=%d", c.Draft)
 }

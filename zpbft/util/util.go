@@ -1,4 +1,4 @@
-package zraft
+package util
 
 import (
 	"math"

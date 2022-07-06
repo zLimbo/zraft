@@ -1,10 +1,10 @@
-package zraft
+package master
 
 import (
 	"net/http"
 	"net/rpc"
 	"sync"
-	"zraft/zlog"
+	"zpbft/zpbft/zlog"
 )
 
 type Master struct {
