@@ -1,6 +1,6 @@
 package config
 
-import "zpbft/zpbft/zlog"
+import "zraft/zraft/zlog"
 
 type Config struct {
 	EpochSize int

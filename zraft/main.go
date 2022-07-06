@@ -2,11 +2,11 @@ package main
 
 import (
 	"flag"
-	"zpbft/zpbft/config"
-	"zpbft/zpbft/draft"
-	"zpbft/zpbft/master"
-	"zpbft/zpbft/raft"
-	"zpbft/zpbft/zlog"
+	"zraft/zraft/config"
+	"zraft/zraft/draft"
+	"zraft/zraft/master"
+	"zraft/zraft/raft"
+	"zraft/zraft/zlog"
 )
 
 func main() {
