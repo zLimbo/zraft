@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"sync"
-	"zraft/zraft/zlog"
+	"zraft/src/zlog"
 )
 
 type Master struct {
