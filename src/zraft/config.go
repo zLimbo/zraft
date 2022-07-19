@@ -1,17 +1,17 @@
-package config
+package zraft
 
 import "zraft/zlog"
 
 type Config struct {
-	EpochSize int
-	EpochNum  int
-	ReqSize   int
-	BatchSize int
-	Persisted bool
-	LogDir    string
-	DelayFrom int
+	EpochSize  int
+	EpochNum   int
+	ReqSize    int
+	BatchSize  int
+	Persisted  bool
+	LogDir     string
+	DelayFrom  int
 	DelayRange int
-	Draft     bool
+	Draft      bool
 }
 
 var KConf Config

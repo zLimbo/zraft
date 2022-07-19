@@ -1,4 +1,4 @@
-package draft
+package zraft
 
 import (
 	"fmt"
@@ -6,40 +6,28 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"zraft/config"
-	"zraft/util"
 	"zraft/zlog"
 )
 
-type DRaft struct {
-	Raft // combination
-	// draft
-	reqCh   chan interface{}
-	draftCh chan []interface{}
-	drafts  map[string][]interface{}
-	nApply  int32
-}
-
 func RunDRaft(maddr, saddr string) {
 
-	rf := &DRaft{
-		Raft: Raft{
-			addr:        saddr,
-			state:       Follower,
-			leaderId:    -1,
-			applyCh:     make(chan ApplyMsg),
-			currentTerm: 0,
-			votedFor:    -1,
-			log:         []LogEntry{{Term: 0}}, // 初始存一个默认entry，索引和任期为0
-			commitIndex: 0,
-			lastApplied: 0,
-		},
+	rf := &Raft{
+		addr:        saddr,
+		state:       Follower,
+		leaderId:    -1,
+		applyCh:     make(chan ApplyMsg),
+		currentTerm: 0,
+		votedFor:    -1,
+		log:         []LogEntry{{Term: 0}}, // 初始存一个默认entry，索引和任期为0
+		commitIndex: 0,
+		lastApplied: 0,
+		// draft
 		drafts:  make(map[string][]interface{}),
-		reqCh:   make(chan interface{}, config.KConf.EpochSize),
+		reqCh:   make(chan interface{}, KConf.EpochSize),
 		draftCh: make(chan []interface{}, 1000),
 	}
 
-	zlog.Debug("%d|%2d|%d|%d|<%d,%d>| make DRaft, peers.num:%d",
+	zlog.Debug("%d|%2d|%d|%d|<%d,%d>| make Raft, peers.num:%d",
 		rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 		len(rf.peers))
 
@@ -57,23 +45,23 @@ func RunDRaft(maddr, saddr string) {
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
-	go rf.applyLog()
+	go rf.applyLogD()
 
-	go rf.test()
+	go rf.testD()
 
 	go rf.draft()
 
 	select {}
 }
 
-func (rf *DRaft) applyLog() {
+func (rf *Raft) applyLogD() {
 
 	outCh := make(chan []interface{}, 1000)
 	go rf.persist(outCh)
 	// statCh := make(chan interface{}, 1000)
 	// go rf.stat(statCh)
 
-	cmds := make([]interface{}, 0, config.KConf.EpochSize/config.KConf.BatchSize)
+	cmds := make([]interface{}, 0, KConf.EpochSize/KConf.BatchSize)
 	t0 := time.Now()
 	for msg := range rf.applyCh {
 		// hash := msg.Command.(string)
@@ -94,28 +82,28 @@ func (rf *DRaft) applyLog() {
 		// 	rf.drafts[hash] = nil
 		// }
 		// rf.mu.Unlock()
-		atomic.AddInt32(&rf.nApply, int32(config.KConf.BatchSize))
+		atomic.AddInt32(&rf.nApply, int32(KConf.BatchSize))
 		cmds = append(cmds, msg.Command)
 		if len(cmds) == cap(cmds) {
-			tps := float64(config.KConf.EpochSize) / util.ToSecond(time.Since(t0))
+			tps := float64(KConf.EpochSize) / ToSecond(time.Since(t0))
 			zlog.Info("%d|%2d|%d|%d|<%d,%d>| apply=%d, tps=%.2f",
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				rf.nApply, tps)
 			outCh <- cmds
 			// statCh <- strconv.Itoa(int(tps)) + " "
-			cmds = make([]interface{}, 0, config.KConf.EpochSize/config.KConf.BatchSize)
+			cmds = make([]interface{}, 0, KConf.EpochSize/KConf.BatchSize)
 			t0 = time.Now()
 		}
 	}
 }
 
-func (rf *DRaft) test() {
+func (rf *Raft) testD() {
 	// reqTime := 5.0 // 请求时间
 
 	reqCount := 0
-	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, config.KConf.ReqSize-4)
+	format := fmt.Sprintf("%2d-%%-%dd\n", rf.me, KConf.ReqSize-4)
 
-	// reqUpperBound := util.MaxInt(3, 3*config.KConf.BatchSize/config.KConf.EpochSize) * config.KConf.EpochSize
+	// reqUpperBound := MaxInt(3, 3*KConf.BatchSize/KConf.EpochSize) * KConf.EpochSize
 	for {
 		time.Sleep(intervalTime * time.Millisecond)
 
@@ -126,22 +114,22 @@ func (rf *DRaft) test() {
 			// for reqCount > reqUpperBound+int(rf.nApply) {
 			// 	time.Sleep(100 * time.Millisecond)
 			// }
-			if reqCount >= config.KConf.EpochNum*config.KConf.EpochSize {
+			if reqCount >= KConf.EpochNum*KConf.EpochSize {
 				return
 			}
 		}
 	}
 }
 
-func (rf *DRaft) draft() {
+func (rf *Raft) draft() {
 
 	go func() {
-		reqs := make([]interface{}, 0, config.KConf.BatchSize)
+		reqs := make([]interface{}, 0, KConf.BatchSize)
 		for req := range rf.reqCh {
 			reqs = append(reqs, req)
 			if len(reqs) == cap(reqs) {
 				rf.draftCh <- reqs
-				reqs = make([]interface{}, 0, config.KConf.BatchSize)
+				reqs = make([]interface{}, 0, KConf.BatchSize)
 			}
 		}
 	}()
@@ -162,11 +150,11 @@ func (rf *DRaft) draft() {
 	}()
 }
 
-func (rf *DRaft) senddraftForAll(hash string, draft []interface{}) {
+func (rf *Raft) senddraftForAll(hash string, draft []interface{}) {
 	zlog.Debug("%d|%2d|%d|%d|<%d,%d>| send draft for all, hash=%s",
 		rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 		hash)
-	args := &SenddraftArgs{
+	args := &SendDraftArgs{
 		Id:    rf.me,
 		Hash:  hash,
 		draft: draft,
@@ -181,18 +169,18 @@ func (rf *DRaft) senddraftForAll(hash string, draft []interface{}) {
 		}
 		server1 := server
 		go func() {
-			reply := &SenddraftReply{}
-			ok := rf.senddraft(server1, args, reply)
+			reply := &SendDraftReply{}
+			ok := rf.sendDraft(server1, args, reply)
 			zlog.Debug("%d|%2d|%d|%d|<%d,%d>| send draft => %d ok, hash=%s",
 				rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
 				server1, args.Hash)
 			if ok && reply.Success {
 				if atomic.AddInt32(&count, 1) == up {
 					wg.Done()
-					args := &SenddraftArgs{Id: rf.me, Hash: hash}
-					reply := &SenddraftReply{}
+					args := &SendDraftArgs{Id: rf.me, Hash: hash}
+					reply := &SendDraftReply{}
 					// todo 未加锁保护
-					rf.senddraft(rf.leaderId, args, reply)
+					rf.sendDraft(rf.leaderId, args, reply)
 				}
 			}
 		}()
@@ -200,25 +188,25 @@ func (rf *DRaft) senddraftForAll(hash string, draft []interface{}) {
 	wg.Wait()
 }
 
-func (rf *DRaft) senddraft(server int, args *SenddraftArgs, reply *SenddraftReply) bool {
-	if err := rf.peers[server].rpcCli.Call("DRaft.Senddraft", args, reply); err != nil {
+func (rf *Raft) sendDraft(server int, args *SendDraftArgs, reply *SendDraftReply) bool {
+	if err := rf.peers[server].rpcCli.Call("Raft.SendDraftRpc", args, reply); err != nil {
 		zlog.Error("%v", err)
 		return false
 	}
 	return true
 }
 
-type SenddraftArgs struct {
+type SendDraftArgs struct {
 	Id    int
 	Hash  string
 	draft []interface{}
 }
 
-type SenddraftReply struct {
+type SendDraftReply struct {
 	Success bool
 }
 
-func (rf *DRaft) Senddraft(args *SenddraftArgs, reply *SenddraftReply) error {
+func (rf *Raft) SendDraftRpc(args *SendDraftArgs, reply *SendDraftReply) error {
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()

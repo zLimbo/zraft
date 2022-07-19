@@ -1,4 +1,4 @@
-package draft
+package zraft
 
 import (
 	"sync/atomic"
@@ -137,7 +137,7 @@ func (rf *Raft) ballotCount(server int, ballot *int, args *RequestVoteArgs, repl
 
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	rpcDelay()
-	if err := rf.peers[server].rpcCli.Call("Raft.RequestVote", args, reply); err != nil {
+	if err := rf.peers[server].rpcCli.Call("Raft.RequestVoteRpc", args, reply); err != nil {
 		zlog.Warn("%v", err)
 		return false
 	}

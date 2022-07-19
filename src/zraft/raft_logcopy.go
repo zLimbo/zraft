@@ -1,11 +1,9 @@
-package draft
+package zraft
 
 import (
 	"sort"
 	"sync/atomic"
 	"time"
-	"zraft/config"
-	"zraft/util"
 	"zraft/zlog"
 )
 
@@ -48,14 +46,14 @@ func (rf *Raft) timingHeartbeatForAll() {
 			continue
 		}
 
-		rf.mu.Lock()
-		defer rf.mu.Unlock()
-		// 如果连接数少于半数，则退化为 follower
-		zlog.Info("%d|%2d|%d|%d|<%d,%d>| leader timeout, connect count=%d(<%d), state:%s=>follower",
-			rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
-			connectCount, half, state2str[atomic.LoadInt32(&rf.state)])
-		atomic.StoreInt32(&rf.state, Follower)
-		rf.leaderId = -1
+		// rf.mu.Lock()
+		// defer rf.mu.Unlock()
+		// // 如果连接数少于半数，则退化为 follower
+		// zlog.Info("%d|%2d|%d|%d|<%d,%d>| leader timeout, connect count=%d(<%d), state:%s=>follower",
+		// 	rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
+		// 	connectCount, half, state2str[atomic.LoadInt32(&rf.state)])
+		// atomic.StoreInt32(&rf.state, Follower)
+		// rf.leaderId = -1
 		return
 	}
 }
@@ -176,15 +174,15 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 			startIndex := rf.nextIndex[server]
 			if logMatched {
 				// 指数递增拷贝
-				// nEntriesCopy = util.MinInt(nEntriesCopy*nEntriesCopy+1, len(rf.log)-startIndex)
+				// nEntriesCopy = MinInt(nEntriesCopy*nEntriesCopy+1, len(rf.log)-startIndex)
 				// 全部取出拷贝
-				if config.KConf.Draft {
-					nEntriesCopy = util.MinInt(1, len(rf.log)-startIndex)
+				if KConf.Draft {
+					nEntriesCopy = MinInt(1, len(rf.log)-startIndex)
 				} else {
-					nEntriesCopy = util.MinInt(len(rf.log)-startIndex, config.KConf.BatchSize)
+					nEntriesCopy = MinInt(len(rf.log)-startIndex, KConf.BatchSize)
 				}
 			} else {
-				nEntriesCopy = util.MinInt(1, len(rf.log)-startIndex)
+				nEntriesCopy = MinInt(1, len(rf.log)-startIndex)
 			}
 
 			return &AppendEntriesArgs{
@@ -263,7 +261,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 
 			if len(args.Entries) != 0 {
 				// 复制到副本成功
-				rf.matchIndex[server] = util.MaxInt(rf.matchIndex[server], args.PrevLogIndex+len(args.Entries))
+				rf.matchIndex[server] = MaxInt(rf.matchIndex[server], args.PrevLogIndex+len(args.Entries))
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
 			}
 
@@ -272,7 +270,7 @@ func (rf *Raft) timingAppendEntriesForOne(server int) {
 				server, args.PrevLogIndex, args.PrevLogIndex+len(args.Entries), rf.matchIndex[server], rf.nextIndex[server])
 
 			// 本server commitIndex的值
-			commitIndex = util.MinInt(args.LeaderCommit, rf.matchIndex[server])
+			commitIndex = MinInt(args.LeaderCommit, rf.matchIndex[server])
 
 			// 推进leader的commit
 			rf.advanceLeaderCommit()
@@ -339,7 +337,7 @@ func (rf *Raft) advanceLeaderCommit() {
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	rpcDelay()
-	if err := rf.peers[server].rpcCli.Call("Raft.AppendEntries", args, reply); err != nil {
+	if err := rf.peers[server].rpcCli.Call("Raft.AppendEntriesRpc", args, reply); err != nil {
 		zlog.Error("%v", err)
 		return false
 	}
@@ -379,9 +377,9 @@ func (rf *Raft) AppendEntriesRpc(args *AppendEntriesArgs, reply *AppendEntriesRe
 
 	// 新的leader产生
 	if args.LeaderId != rf.leaderId {
-		zlog.Info("%d|%2d|%d|%d|<%d,%d>| state:%s=>follower, new leader %d",
+		zlog.Info("%d|%2d|%d|%d|<%d,%d>| state:%s=>follower, new leader %d[addr = %s]",
 			rf.me, rf.leaderId, rf.currentTerm, rf.commitIndex, len(rf.log)-1, rf.log[len(rf.log)-1].Term,
-			state2str[atomic.LoadInt32(&rf.state)], args.LeaderId)
+			state2str[atomic.LoadInt32(&rf.state)], args.LeaderId, rf.peers[args.LeaderId].addr)
 		rf.leaderId = args.LeaderId
 	}
 
@@ -420,7 +418,7 @@ func (rf *Raft) foundSameLog(args *AppendEntriesArgs, reply *AppendEntriesReply)
 		return true
 	}
 
-	index := util.MinInt(args.PrevLogIndex, len(rf.log)-1)
+	index := MinInt(args.PrevLogIndex, len(rf.log)-1)
 	if rf.log[index].Term > args.PrevLogTerm {
 		// 如果term不等，则采用二分查找找到最近匹配的日志索引
 		left, right := rf.commitIndex, index
@@ -465,7 +463,7 @@ func (rf *Raft) updateEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// 推进commit和apply
 	oldCommitIndex := rf.commitIndex
-	rf.commitIndex = util.MinInt(args.LeaderCommit, len(rf.log)-1)
+	rf.commitIndex = MinInt(args.LeaderCommit, len(rf.log)-1)
 	rf.applyLogEntries(oldCommitIndex+1, rf.commitIndex)
 	rf.lastApplied = rf.commitIndex
 

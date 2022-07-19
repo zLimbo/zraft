@@ -1,4 +1,4 @@
-package master
+package zraft
 
 import (
 	"net/http"
@@ -51,11 +51,13 @@ func (m *Master) RegisterRpc(args *RegisterArgs, reply *RegisterReply) error {
 
 		// 如果超过注册数目，则注册失败
 		if len(m.addrs) >= m.peerNum {
+			zlog.Warn("len(m.addrs) >= m.peerNum, %d >= %d", len(m.addrs), m.peerNum)
 			return false
 		}
 		// 如果已经注册，本次注册失败
 		for _, addr := range m.addrs {
 			if addr == args.Addr {
+				zlog.Warn("repeat register !")
 				return false
 			}
 		}

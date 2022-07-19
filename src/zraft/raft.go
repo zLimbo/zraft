@@ -1,4 +1,4 @@
-package draft
+package zraft
 
 import (
 	"math/rand"
@@ -6,8 +6,6 @@ import (
 	"net/rpc"
 	"sync"
 	"time"
-	"zraft/config"
-	"zraft/master"
 	"zraft/zlog"
 )
 
@@ -44,9 +42,9 @@ var state2str = map[State]string{
 const (
 	intervalTime         = 20
 	heartbeatTime        = 200
-	electionTimeoutFrom  = 600
-	electionTimeoutRange = 200
-	leaderTimeout        = 2000
+	electionTimeoutFrom  = 6000
+	electionTimeoutRange = 2000
+	leaderTimeout        = 20000
 )
 
 func GetRandomElapsedTime() int {
@@ -54,10 +52,10 @@ func GetRandomElapsedTime() int {
 }
 
 func rpcDelay() {
-	if config.KConf.DelayRange > 0 {
-		ms := config.KConf.DelayFrom + rand.Intn(config.KConf.DelayRange)
-		time.Sleep(time.Duration(ms) * time.Millisecond)
-	}
+	// if KConf.DelayRange > 0 {
+	// 	ms := KConf.DelayFrom + rand.Intn(KConf.DelayRange)
+	// 	time.Sleep(time.Duration(ms) * time.Millisecond)
+	// }
 }
 
 type Peer struct {
@@ -85,6 +83,12 @@ type Raft struct {
 	lastApplied int
 	nextIndex   []int
 	matchIndex  []int
+
+	// draft
+	reqCh   chan interface{}
+	draftCh chan []interface{}
+	drafts  map[string][]interface{}
+	nApply  int32
 }
 
 func RunRaft(maddr, saddr string) {
@@ -148,11 +152,11 @@ func (rf *Raft) register(maddr string) {
 		zlog.Error("rpc.DialHTTP failed, err:%v", err)
 	}
 
-	args := &master.RegisterArgs{Addr: rf.addr}
-	reply := &master.RegisterReply{}
+	args := &RegisterArgs{Addr: rf.addr}
+	reply := &RegisterReply{}
 
 	zlog.Info("register peer info ...")
-	rpcCli.Call("Master.Register", args, reply)
+	rpcCli.Call("Master.RegisterRpc", args, reply)
 
 	// 重复addr注册或超过 PeerNum 限定节点数，注册失败
 	if !reply.Ok {
